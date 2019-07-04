@@ -2,10 +2,10 @@ provider "aws" {
   region = "us-west-2"
 }
 
-resource "aws_instance" "masuda" {
-  ami                    = "ami-005bdb005fb00e791"
+resource "aws_launch_configuration" "masuda" {
+  image_id                    = "ami-07b4f3c02c7f83d59"
   instance_type          = "t2.micro"
-  vpc_security_group_ids = ["${aws_security_group.instance.id}"]
+  security_groups = ["${aws_security_group.instance.id}"]
 
   user_data = <<-EOF
               #!/bin/bash
@@ -15,8 +15,29 @@ resource "aws_instance" "masuda" {
 
   key_name = "acesso-masuda"
 
-  tags {
-    Name = "terraform-exemplo"
+  lifecycle {
+    create_before_destroy = true
+  }
+
+#  tags {
+#    Name = "terraform-exemplo"
+#  }
+}
+
+resource "aws_autoscaling_group" "masuda" {
+  launch_configuration = "${aws_launch_configuration.masuda.id}"
+  availability_zones   = ["${data.aws_availability_zones.all.names}"]
+
+  load_balancers    = ["${aws_elb.masuda-elb.name}"]
+  health_check_type = "ELB"
+
+  min_size = 2
+  max_size = 10
+
+  tag {
+    key                 = "Masuda"
+    value               = "terraform-asg-example"
+    propagate_at_launch = true
   }
 }
 
@@ -36,6 +57,50 @@ resource "aws_security_group" "instance" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "elb" {
+  name = "terraform-example-elb"
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+
+resource "aws_elb" "masuda-elb" {
+  name = "terraform-asg-example"
+  availability_zones   = ["${data.aws_availability_zones.all.names}"]
+  security_groups      = ["${aws_security_group.elb.id}"]
+
+  listener {
+    lb_port     = 80
+    lb_protocol = "http"
+    instance_port = "${var.server_port}"
+    instance_protocol = "http"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 30
+    target              = "HTTP:${var.server_port}/"
+  }
 }
 
 variable "server_port" {
@@ -48,6 +113,9 @@ variable "ssh_port" {
   default = 22
 }
 
-output "public_ip" {
-  value = "${aws_instance.masuda.public_ip}"
+data "aws_availability_zones" "all" {}
+
+output "elb_dns_name" {
+  value = "${aws_elb.masuda-elb.dns_name}"
 }
+
