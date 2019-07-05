@@ -2,6 +2,15 @@ provider "aws" {
   region = "us-west-2"
 }
 
+terraform {
+  backend "s3"{
+    bucket = "terraform-up-and-running-masuda-state"
+    key    = "global/s3/terraform.tfstate"
+    region = "us-west-2"
+  }
+}
+
+
 resource "aws_launch_configuration" "masuda" {
   image_id                    = "ami-07b4f3c02c7f83d59"
   instance_type          = "t2.micro"
@@ -100,6 +109,18 @@ resource "aws_elb" "masuda-elb" {
     timeout             = 3
     interval            = 30
     target              = "HTTP:${var.server_port}/"
+  }
+}
+
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "terraform-up-and-running-masuda-state"
+
+  versioning {
+    enabled = true
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
