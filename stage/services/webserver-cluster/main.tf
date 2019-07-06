@@ -20,21 +20,35 @@ data "terraform_remote_state" "db" {
   }
 }
 
+data "template_file" "initializing" {
+  #Arquivo template
+  template = "${file("init.sh")}"
+
+  vars {
+    #Pegando variável do arquivo var.tf
+    server_port = "${var.server_port}"
+
+    #Pegando variáveis do output que estão armazenados no s3 terraform-up-and-running-masuda-state/stage/data-stores/mysql
+    db_address = "${data.terraform_remote_state.db.address}"
+    db_port    = "${data.terraform_remote_state.db.port}"
+  }
+}
+
 resource "aws_launch_configuration" "masuda" {
   image_id        = "ami-07b4f3c02c7f83d59"
   instance_type   = "t2.micro"
   security_groups = ["${aws_security_group.instance.id}"]
+  user_data       = "${data.template_file.initializing.rendered}"
 
-  user_data = <<-EOF
-              #!/bin/bash
-              echo "Hello World" >> index.html
-              echo "${data.terraform_remote_state.db.address}" >> index.html
-              echo "${data.terraform_remote_state.db.port}" >> index.html
-              nohup busybox httpd -f -p "${var.server_port}" &
-              EOF
+  #user_data = <<-EOF
+  #!/bin/bash
+  #            echo "Hello World" >> index.html
+  #            echo "${data.terraform_remote_state.db.address}" >> index.html
+  #            echo "${data.terraform_remote_state.db.port}" >> index.html
+  #            nohup busybox httpd -f -p "${var.server_port}" &
+  #            EOF
 
   key_name = "acesso-masuda"
-
   lifecycle {
     create_before_destroy = true
   }
