@@ -5,7 +5,7 @@ provider "aws" {
 terraform {
   backend "s3"{
     bucket = "terraform-up-and-running-masuda-state"
-    key    = "global/s3/terraform.tfstate"
+    key    = "stage/services/webserver-cluster/terraform.tfstate"
     region = "us-west-2"
   }
 }
@@ -112,31 +112,7 @@ resource "aws_elb" "masuda-elb" {
   }
 }
 
-resource "aws_s3_bucket" "terraform_state" {
-  bucket = "terraform-up-and-running-masuda-state"
 
-  versioning {
-    enabled = true
-  }
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-variable "server_port" {
-  description = "The port the server will use for HTTP requests"
-  default = 8080
-}
-
-variable "ssh_port" {
-  description = "The port the server will open for SSH access"
-  default = 22
-}
 
 data "aws_availability_zones" "all" {}
-
-output "elb_dns_name" {
-  value = "${aws_elb.masuda-elb.dns_name}"
-}
 
