@@ -3,5 +3,5 @@ output "address" {
 }
 
 output "port" {
-  value = "${aws_db_instance.masuda.port"
+  value = "${aws_db_instance.masuda.port}"
 }

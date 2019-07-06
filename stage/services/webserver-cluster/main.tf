@@ -3,22 +3,33 @@ provider "aws" {
 }
 
 terraform {
-  backend "s3"{
+  backend "s3" {
     bucket = "terraform-up-and-running-masuda-state"
     key    = "stage/services/webserver-cluster/terraform.tfstate"
     region = "us-west-2"
   }
 }
 
+data "terraform_remote_state" "db" {
+  backend = "s3"
+
+  config {
+    bucket = "terraform-up-and-running-masuda-state"
+    key    = "stage/data-stores/mysql/terraform.tfstate"
+    region = "us-west-2"
+  }
+}
 
 resource "aws_launch_configuration" "masuda" {
-  image_id                    = "ami-07b4f3c02c7f83d59"
-  instance_type          = "t2.micro"
+  image_id        = "ami-07b4f3c02c7f83d59"
+  instance_type   = "t2.micro"
   security_groups = ["${aws_security_group.instance.id}"]
 
   user_data = <<-EOF
               #!/bin/bash
-              echo "Hello World" > index.html
+              echo "Hello World" >> index.html
+              echo "${data.terraform_remote_state.db.address}" >> index.html
+              echo "${data.terraform_remote_state.db.port}" >> index.html
               nohup busybox httpd -f -p "${var.server_port}" &
               EOF
 
@@ -28,9 +39,9 @@ resource "aws_launch_configuration" "masuda" {
     create_before_destroy = true
   }
 
-#  tags {
-#    Name = "terraform-exemplo"
-#  }
+  #  tags {
+  #    Name = "terraform-exemplo"
+  #  }
 }
 
 resource "aws_autoscaling_group" "masuda" {
@@ -83,23 +94,22 @@ resource "aws_security_group" "elb" {
   }
 
   egress {
-    from_port = 0
-    to_port   = 0
-    protocol  = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
-
 resource "aws_elb" "masuda-elb" {
-  name = "terraform-asg-example"
-  availability_zones   = ["${data.aws_availability_zones.all.names}"]
-  security_groups      = ["${aws_security_group.elb.id}"]
+  name               = "terraform-asg-example"
+  availability_zones = ["${data.aws_availability_zones.all.names}"]
+  security_groups    = ["${aws_security_group.elb.id}"]
 
   listener {
-    lb_port     = 80
-    lb_protocol = "http"
-    instance_port = "${var.server_port}"
+    lb_port           = 80
+    lb_protocol       = "http"
+    instance_port     = "${var.server_port}"
     instance_protocol = "http"
   }
 
@@ -112,7 +122,4 @@ resource "aws_elb" "masuda-elb" {
   }
 }
 
-
-
 data "aws_availability_zones" "all" {}
-
