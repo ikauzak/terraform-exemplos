@@ -10,130 +10,18 @@ terraform {
   }
 }
 
-data "terraform_remote_state" "db" {
-  backend = "s3"
+# Referencia do módulo
+module "webserver_cluster" {
+  source = "../../../modules/services/webserver-cluster"
 
-  config {
-    bucket = "terraform-up-and-running-masuda-state"
-    key    = "stage/data-stores/mysql/terraform.tfstate"
-    region = "us-west-2"
-  }
+  cluster_name           = "webservers-stage"
+  db_remote_state_bucket = "terraform-up-and-running-masuda-state"
+  db_remote_state_key    = "stage/data-stores/mysql/terraform.tfstate"
+
+  instance_type = "t2.micro"
+  min_size      = 2
+  max_size      = 2
 }
 
-data "template_file" "initializing" {
-  #Arquivo template
-  template = "${file("init.sh")}"
+# Sempre que alterar algum arquivo no diretório modules, é necessário executar o comando terraform get antes de executar o apply ou o plan.
 
-  vars {
-    #Pegando variável do arquivo var.tf
-    server_port = "${var.server_port}"
-
-    #Pegando variáveis do output que estão armazenados no s3 terraform-up-and-running-masuda-state/stage/data-stores/mysql
-    db_address = "${data.terraform_remote_state.db.address}"
-    db_port    = "${data.terraform_remote_state.db.port}"
-  }
-}
-
-resource "aws_launch_configuration" "masuda" {
-  image_id        = "ami-07b4f3c02c7f83d59"
-  instance_type   = "t2.micro"
-  security_groups = ["${aws_security_group.instance.id}"]
-  user_data       = "${data.template_file.initializing.rendered}"
-
-  #user_data = <<-EOF
-  #!/bin/bash
-  #            echo "Hello World" >> index.html
-  #            echo "${data.terraform_remote_state.db.address}" >> index.html
-  #            echo "${data.terraform_remote_state.db.port}" >> index.html
-  #            nohup busybox httpd -f -p "${var.server_port}" &
-  #            EOF
-
-  key_name = "acesso-masuda"
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  #  tags {
-  #    Name = "terraform-exemplo"
-  #  }
-}
-
-resource "aws_autoscaling_group" "masuda" {
-  launch_configuration = "${aws_launch_configuration.masuda.id}"
-  availability_zones   = ["${data.aws_availability_zones.all.names}"]
-
-  load_balancers    = ["${aws_elb.masuda-elb.name}"]
-  health_check_type = "ELB"
-
-  min_size = 2
-  max_size = 10
-
-  tag {
-    key                 = "Masuda"
-    value               = "terraform-asg-example"
-    propagate_at_launch = true
-  }
-}
-
-resource "aws_security_group" "instance" {
-  name = "terraform-example-instance"
-
-  ingress {
-    from_port   = "${var.server_port}"
-    to_port     = "${var.server_port}"
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = "${var.ssh_port}"
-    to_port     = "${var.ssh_port}"
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_security_group" "elb" {
-  name = "terraform-example-elb"
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_elb" "masuda-elb" {
-  name               = "terraform-asg-example"
-  availability_zones = ["${data.aws_availability_zones.all.names}"]
-  security_groups    = ["${aws_security_group.elb.id}"]
-
-  listener {
-    lb_port           = 80
-    lb_protocol       = "http"
-    instance_port     = "${var.server_port}"
-    instance_protocol = "http"
-  }
-
-  health_check {
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 3
-    interval            = 30
-    target              = "HTTP:${var.server_port}/"
-  }
-}
-
-data "aws_availability_zones" "all" {}
